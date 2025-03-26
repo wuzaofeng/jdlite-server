@@ -3,12 +3,15 @@ import aiohttp
 import datetime
 import time
 from http.cookies import SimpleCookie
-import json
+
 from tenacity import retry, stop_after_attempt, wait_random
+from click import create_driver
+
 
 class JDCouponSniper:
-    def __init__(self, scheduled_time, concurrency=5):
-        self.scheduled_time = scheduled_time
+    def __init__(self, opts, concurrency=5):
+        self.scheduled_time = opts.scheduled_time
+        self.open_url = opts.open_url
         self.concurrency = concurrency
         self.url = "http://api.m.jd.com/client.action?functionId=newBabelAwardCollection"
         self.headers = {
@@ -32,6 +35,7 @@ class JDCouponSniper:
             'Connection': 'keep-alive'
        }
         self.payload = self.get_payload()
+
 
         self.proxy = 'http://114.232.110.212:8888'
         # self.cookie = f'3AB9D23F7A4B3C9B=IE2TCS6IIZTKUND263AWMTLP3MHLPLWV5WWJEOQ7VQ467LTCXQGRKLM5R3VHGATVGHAPUOO3I4GW6FIMZK2NUBVWSE; b_avif=1; shshshfpa=2d797b79-b4bf-e96c-2934-a8ead9696136-1742802716; shshshfpx=2d797b79-b4bf-e96c-2934-a8ead9696136-1742802716; jcap_dvzw_fp=GMAhe8iH2084tnLleZx9qxA00kP2ft4T4OQFwhmTAfW9FmBh4pfA_huG99ne1PNmPc50poxJuf7kR2wUUPXXzA==; whwswswws=; __jdc=76161171; __jdu=174280271490439733364; areaId=19; ipLoc-djd=19-1607-0-0; PCSYCityID=CN_440000_440300_0; mba_muid=174280271490439733364; TrackerID=55Dymz-4lfHRotD9LIu2WTgfS2uSg2bFx7T_s-qTr89MZwrbfgiGxOaAFOP9E1vbzi0o4izTnX-7zwfgjkzohlyxJXkN24PnWkiifwBTDWoHl8qXmcoaS94VAlPn2G0qs7RV-HmIYpYGosY4NrargQ; pt_key=AAJn4hJoADBKVil246uymGTPqD8---viT7M3zGfsAlE5uJSS8ulRiZHdnv53hNJ3J9HwFPL-hR8; pt_pin=13418883867_p; pt_token=oionztx7; pwdt_id=13418883867_p; sfstoken=tk01mb1761bf2a8sMXgzS1dpcGt4zXTqJ7BvGOoI+rYVGiWuAC0j9pGdQc6ZX5Z3pXqFG/N5shlk3e0SU8j4t4ds8wiK; wxa_level=1; retina=1; cid=9; jxsid=17428864310242475133; appCode=ms0ca95114; webp=1; visitkey=5278678414475534229; cd_eid=jdd03IE2TCS6IIZTKUND263AWMTLP3MHLPLWV5WWJEOQ7VQ467LTCXQGRKLM5R3VHGATVGHAPUOO3I4GW6FIMZK2NUBVWSEAAAAMVZQPW45YAAAAACOEZGTY2IEHFJQX; sc_width=375; unpl=JF8EAJ1nNSttWk9TUBwGSBMZTl1dW14IGR5WbmQBUFtbTAcDT1YbQRN7XlVdWRRKFR9sYxRUWVNIVg4YAisSEHteVV1ZCkMeBmphNWRdWUpUBxwCGRYVe15Ublw4SxEGbG4EV1tYTlwEHgATFBJJX1NbbQl7FwtoVzVkXGhLUQUcAisTIAAzVRNdDk4UCm5kA1RYUEpRBxMEGRASTFhkX20L; __jda=76161171.174280271490439733364.1742802714.1742887401.1742887715.5; 3AB9D23F7A4B3CSS=jdd03IE2TCS6IIZTKUND263AWMTLP3MHLPLWV5WWJEOQ7VQ467LTCXQGRKLM5R3VHGATVGHAPUOO3I4GW6FIMZK2NUBVWSEAAAAMVZQ2AK6QAAAAACXSETS5J5VZZWUX; _gia_d=1; b_dw=375; b_dh=667; b_dpr=2; b_webp=0; warehistory="100068755499,100128082344,"; wqmnx1=MDEyNjM5MnRtbS81Pz1lNDNzPVA0TWdJdmNtc3VTMSZ1ZXVtdWkwN3ViODgzMjRNLmVoM2VYZS5UIGUubCAwRmQtMlUpJg%3D%3D; pt_st=1_Eua1qcuuDEZNyMzvybYvuKB40IwFqeA24E_nFvCu_1AIfq-rf-HIW-PBOhXOM8hRRIfHYOD3AVY_RGU6b0BQ75OtyVjYLMsnjrAHq6S96-a9H2noqTB6rqASH2y1pshutPN2b4R8HEbQrSs9l3oY-BCEG8iURTpqEScZypBiUwYYyd_uxZWTb6fere0i-h3mteyApe048z33a_Vurrz94maGz3WVOhaowamG; __wga=1742887725909.1742887725909.1742887725909.1742887725909.1.1; PPRD_P=UUID.174280271490439733364-EA.17053.1.1-LOGID.1742887725922.1264592654; __jdb=76161171.4.174280271490439733364|5.1742887715; __jdv=76161171%7Cweixin%7Ct_1000072672_17053_001%7Cweixin%7Cbc18474378e54dc89d83c40414e3d491%7C1742887726688; mba_sid=17428863659011219708841.16; joyytokem=babel_4HfnzzR9fEiGxYamWbf65PnPj9WDMDFGaVVuTzk5MQ==.d15hXHd+XmJceHRRYxAKM10/CAcJE2AlMXdFY0J+algrXDF3FxcvPx46ZxwkfhMKLA50EWcmfyEnMA0FExM4P38OPB0EOgA+BDEGNltmVzcMWBgfLHY2HCl9OBc=.be33909e; shshshfpb=BApXSNqc8z_BAj9VpRvgH2Jv9wZ1ir9DsBgDBIDk29xJ1P40IKdeOykK41H2tDJYIHDRf1g; sdtoken=AAbEsBpEIOVjqTAKCQtvQu17D7182iULWgXJH7cO6g53DUOR9JhLh08465Vua8TLOREoYb9LXJwd-SIkf5lZz5U7oIW7cbNb8E7AGJA1jDoGp_dp7mZvf-T9kk-d4qNIIPXA_O3-DbbWoSvUvA; __jd_ref_cls=Babel_H5FirstClick; joyya=1742887726.1742887730.45.1tryr05'
@@ -104,17 +108,24 @@ class JDCouponSniper:
                 print(f"当前时间: {now}")
                 time.sleep(0.1)
 
-    async def start(self):
+    async def start(self):        
+        self.wait_for_time()
 
-        # self.wait_for_time()
+        create_driver(self.open_url)
         
-        results = await self.concurrent_requests()
-        success_count = len([r for r in results if r and 'success' in r.lower()])
-        print(f"抢券完成，成功次数: {success_count}")
+        # results = await self.concurrent_requests()
+        # success_count = len([r for r in results if r and 'success' in r.lower()])
+        # print(f"抢券完成，成功次数: {success_count}")
 
 def main():
+
     scheduled_time = "2025-03-25 16:55:00"  # 设置抢券时间
-    sniper = JDCouponSniper(scheduled_time)
+    open_url = f'https://h5static.m.jd.com/mall/active/4HfnzzR9fEiGxYamWbf65PnPj9WD/index.html?utm_user=plusmember&_ts=1742819243430&ad_od=share&gxd=RnAowmYKPGXfnp4Sq4B_W578vOMp4E7JgUugKDcomXTOIlSPI-BCnvuytD0G7kc&gx=RnAomTM2PUO_ss8T04FzPCuSv0HqkkASPQ&PTAG=17053.1.1&cu=true&utm_source=weixin&utm_medium=weixin&utm_campaign=t_1000072672_17053_001&utm_term=bc18474378e54dc89d83c40414e3d491&preventPV=1&forceCurrentView=1',
+
+    
+    sniper = JDCouponSniper({
+        scheduled_time, open_url
+    })
     
     # 运行抢券程序
     asyncio.run(sniper.start())
